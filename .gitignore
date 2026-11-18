@@ -23,3 +23,6 @@ tasks.yaml
 .DS_Store
 # Windows build output
 *.exe
+
+# host key pins (per device, local trust state)
+*.pin
