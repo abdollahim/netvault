@@ -6,15 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
-## [0.0.1] - 2026-11-18
+## [0.1.0] - 2026-11-18
 
-Pre-release. The project is not yet usable: it has no device connections and runs no commands.
+Pre-release. The first real connection to a network device works.
 
 ### Added
-- Project scaffold with layered package layout: domain, config, transport, driver, store, scheduler, service, cli.
-- Example configuration, device, and task files with placeholder values only.
-- Test that rejects site-specific data, such as private addresses and system paths, in committed examples.
-- `.gitattributes` forcing LF line endings in the repository.
+- Legacy SSH transport for devices that offer only older key exchange, cipher, and MAC algorithms.
+- Host key pinning: the first key is trusted and stored, and a later change stops the connection.
+- Throwaway spike command that runs one command on a device and reports output size and time. It is removed in a later phase.
+- Tests against an in-process legacy device covering command execution, refused modern-only clients, wrong passwords, and changed host keys.
 
-[Unreleased]: https://github.com/abdollahim/netvault/compare/v0.0.1...HEAD
+### Measured
+- `show version` on a Cisco REDACTED-MODEL series switch: about 2.4 KB, about 0.7 s, with no algorithm fallback.
+
+[Unreleased]: https://github.com/abdollahim/netvault/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/abdollahim/netvault/releases/tag/v0.1.0
 [0.0.1]: https://github.com/abdollahim/netvault/releases/tag/v0.0.1
