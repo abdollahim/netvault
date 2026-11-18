@@ -1,0 +1,29 @@
+# Copy to config/config.yaml and edit. Placeholder values only.
+
+files:
+  devices: ./config/devices.yaml
+  tasks: ./config/tasks.yaml
+  credentials: ./config/credentials.yaml
+  profiles: ./profiles
+
+paths:
+  data_root: ./data
+  log_dir: ./logs
+  runtime_dir: ./run
+  tmp_dir: ./tmp
+
+logging:
+  level: info
+  rotate:
+    max_size_mb: 100
+    max_age_days: 180
+    max_files: 50
+    compress: true
+
+schedules:
+  - name: cisco-weekly
+    target: brand=cisco-ios
+    day: sunday
+    time: "02:30" # system timezone
+    window_hours: 10
+    tasks: [backup-config, inventory]

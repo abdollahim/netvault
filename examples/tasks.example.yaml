@@ -1,0 +1,12 @@
+# Copy to config/tasks.yaml. Placeholder values only.
+tasks:
+  - name: backup-config
+    commands:
+      - command: show running-config
+        group: archive
+  - name: inventory
+    commands:
+      - command: show version
+        group: archive
+      - command: show clock
+        group: raw

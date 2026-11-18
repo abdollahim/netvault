@@ -1,0 +1,25 @@
+# binaries
+/netvault
+/dist/
+
+# real environment files (examples are committed instead)
+/config/
+config.yaml
+devices.yaml
+tasks.yaml
+*.local.yaml
+
+# runtime data, logs, archives
+/data/
+/logs/
+*.log
+*.log.*
+*.gz
+*.tar
+
+# editors and OS
+.idea/
+.vscode/
+.DS_Store
+# Windows build output
+*.exe

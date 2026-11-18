@@ -1,0 +1,7 @@
+# Copy to config/devices.yaml. Placeholder values only.
+devices:
+  - name: example-switch-01
+    address: 192.0.2.10
+    brand: cisco-ios
+    group: ST01
+    status: active # active | maintenance | repair
