@@ -1,0 +1,39 @@
+# Brand profile for Cisco IOS-style command lines.
+# Describes how the CLI behaves, not any site. Safe to publish.
+name: cisco-ios
+description: Cisco IOS command line over SSH
+
+transport:
+  # Legacy algorithms, enabled explicitly. Older devices offer only these.
+  key_exchanges:
+    - diffie-hellman-group14-sha1
+    - diffie-hellman-group1-sha1
+  ciphers:
+    - aes128-cbc
+    - aes192-cbc
+    - aes256-cbc
+    - 3des-cbc
+  macs:
+    - hmac-sha1
+  host_key_algorithms:
+    - ssh-rsa
+
+prompt:
+  user_exec: '^[\w.\-()/]+>\s*$'
+  privileged: '^[\w.\-()/]+#\s*$'
+  password: '(?i)password:\s*$'
+  pager: "--More--"
+  pager_answer: " "
+
+# Sent once after login, so output is never paged.
+setup:
+  - terminal length 0
+  - terminal width 0
+
+enable:
+  command: enable
+
+timeouts:
+  connect_seconds: 20
+  prompt_seconds: 30
+  command_seconds: 600
