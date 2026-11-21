@@ -172,8 +172,10 @@ func (s *Shell) Sync(timeout time.Duration) (string, error) {
 	return strings.TrimSpace(lastLine(text)), nil
 }
 
-// Run sends one command and returns its output, without the trailing prompt.
+// Run sends one command and returns its output, without the echoed command
+// and the trailing prompt.
 func (s *Shell) Run(cmd string, timeout time.Duration) (string, error) {
+	s.drain(300 * time.Millisecond)
 	s.buf.Reset()
 	if _, err := io.WriteString(s.in, cmd+"\n"); err != nil {
 		return "", err
@@ -182,7 +184,7 @@ func (s *Shell) Run(cmd string, timeout time.Duration) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return s.cleanOutput(text), nil
+	return s.cleanOutput(text, cmd), nil
 }
 
 // Enable raises privilege using the profile's enable command and the secret.
@@ -243,12 +245,31 @@ func lastLine(s string) string {
 	return s
 }
 
-// cleanOutput normalizes line endings and drops the trailing prompt line.
-func (s *Shell) cleanOutput(text string) string {
+// cleanOutput normalizes line endings, drops the echoed command at the top,
+// and drops the trailing prompt line.
+func (s *Shell) cleanOutput(text, cmd string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "")
+	if i := strings.Index(text, "\n"); i >= 0 && strings.TrimSpace(text[:i]) == cmd {
+		text = text[i+1:]
+	}
 	if i := strings.LastIndex(text, "\n"); i >= 0 && s.isPrompt(text[i+1:]) {
 		return text[:i+1]
 	}
 	return text
+}
+
+// drain discards output that arrived late, until the device has been quiet
+// for the given duration. Stale text must not be mistaken for a response.
+func (s *Shell) drain(quiet time.Duration) {
+	for {
+		select {
+		case _, ok := <-s.chunks:
+			if !ok {
+				return
+			}
+		case <-time.After(quiet):
+			return
+		}
+	}
 }
