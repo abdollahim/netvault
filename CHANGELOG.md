@@ -1,22 +1,26 @@
 # Changelog
 
 All notable changes to this project are documented here.
-The format follows [Keep a Changelog](https://keepachangelog.com),
-and the project uses [Semantic Versioning](https://semver.org).
+The format follows [Keep a Changelog](https://keepachangelog.com/),
+and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
 ### Added
 - Interactive shell session with a PTY, prompt detection, pager handling, and enable mode.
-- Completeness check for running configurations: a config is accepted only if it has the `Current configuration` header and ends with `end`.
-- Tests for prompt detection, pager removal, and completeness checks, running without a device.
+- Brand profiles: prompts, paging, enable command, timeouts, and SSH algorithms are read from a profile file. Adding a brand needs only a new profile.
+- Strict profile validation: unknown fields and invalid patterns are rejected at load time, naming the field.
+- Completeness check for running configurations: accepted only with the `Current configuration` header and a closing `end` line.
 - Spike command requires the device address and the host key pin file as explicit arguments. No site defaults are stored in the code.
+- Tests for prompt detection, pager removal, enable success and failure, timeouts, truncated output, and profile validation, all running without hardware.
+- Ignore rules for local runtime data (`local/`), captured output, and host key pin files.
 
 ### Fixed
-- Large running-configuration output was truncated when sent as a single exec command. The device closed the channel after the banner. Commands now run in an interactive shell, the same way a person uses a terminal.
+- Large running-configuration output was truncated when sent as a single exec command. Commands now run in an interactive shell, the same way a person uses a terminal.
+- Interactive commands could pick up stale output from an earlier command. Output is drained before each command, and the echoed command is removed from the result. Verification against a device is pending.
 
 ### Measured
-- Full running configuration from a production switch through the interactive shell: complete, about 12 seconds.
+- Full running configuration from a production switch through the interactive shell, before the stale-output fix: complete, about 12 seconds.
 
 ## [0.1.0] - 2026-11-18
 
