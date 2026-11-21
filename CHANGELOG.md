@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- Interactive shell session with a PTY, prompt detection, pager handling, and enable mode.
+- Completeness check for running configurations: a config is accepted only if it has the `Current configuration` header and ends with `end`.
+- Tests for prompt detection, pager removal, and completeness checks, running without a device.
+
+### Fixed
+- Large `show running-config` output was truncated when sent as a single exec command. The device closed the channel after the banner. Commands now run in an interactive shell, the same way a person uses a terminal.
+
+### Measured
+- `show running-config` on a Cisco REDACTED-MODEL series switch through the interactive shell: `<bytes>` bytes in `<seconds>` s, complete.
+
 ## [0.1.0] - 2026-11-18
 
 Pre-release. The first real connection to a network device works.
@@ -18,6 +29,9 @@ Pre-release. The first real connection to a network device works.
 
 ### Measured
 - `show version` on a Cisco REDACTED-MODEL series switch: about 2.4 KB, about 0.7 s, with no algorithm fallback.
+
+### Known issues
+- Large `show running-config` output is truncated over exec commands. Fixed in the next release.
 
 [Unreleased]: https://github.com/abdollahim/netvault/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/abdollahim/netvault/releases/tag/v0.1.0
