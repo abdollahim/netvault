@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-18
+
+Pre-release. Commands run in an interactive shell driven by brand profiles.
+
 ### Added
 - Interactive shell session with a PTY, prompt detection, pager handling, and enable mode.
 - Brand profiles: prompts, paging, enable command, timeouts, and SSH algorithms are read from a profile file. Adding a brand needs only a new profile.
