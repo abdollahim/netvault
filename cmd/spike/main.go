@@ -15,11 +15,15 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "REDACTED-IP:22", "device address host:port")
-	user := flag.String("user", "", "read-only account name")
+	addr := flag.String("addr", "", "device address host:port (required)")
+	user := flag.String("user", "", "read-only account name (required)")
 	cmd := flag.String("cmd", "show running-config", "command to run")
-	pin := flag.String("pin", "spike-REDACTED-IP.pin", "host key pin file")
+	pin := flag.String("pin", "", "host key pin file, kept outside the repo (required)")
 	flag.Parse()
+
+	if *addr == "" || *user == "" || *pin == "" {
+		fail("-addr, -user, and -pin are required")
+	}
 
 	if *user == "" {
 		fail("-user is required")
