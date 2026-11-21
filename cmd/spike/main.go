@@ -35,7 +35,7 @@ func main() {
 	pw := readSecret("password for " + *user + ": ")
 
 	client, err := transport.Dial(*addr,
-		transport.LegacyClientConfig(*user, string(pw), transport.PinnedHostKey(*pin)))
+		transport.ClientConfigFromProfile(prof, *user, string(pw), transport.PinnedHostKey(*pin)))
 	if err != nil {
 		fail(err.Error())
 	}
@@ -60,7 +60,7 @@ func main() {
 // profile's privileged prompt is required, runs the setup commands, and runs
 // the command.
 func runInShell(client *ssh.Client, prof *profile.Profile, cmd string) (string, error) {
-	sh, err := transport.OpenShell(client)
+	sh, err := transport.OpenShell(client, prof)
 	if err != nil {
 		return "", err
 	}

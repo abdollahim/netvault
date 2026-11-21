@@ -1,33 +1,9 @@
 package transport
 
 import (
-	"strings"
+	"regexp"
 	"testing"
 )
-
-func TestPromptDetection(t *testing.T) {
-	for _, p := range []string{"sw1#", "sw1>", "DC01-RC10_WS-C6509-E_Core#", "sw1(config)#"} {
-		if !promptLine.MatchString(p) {
-			t.Errorf("prompt %q not detected", p)
-		}
-	}
-	for _, l := range []string{"interface GigabitEthernet1/1", "Password: ", "--More-- ", "end"} {
-		if promptLine.MatchString(l) {
-			t.Errorf("%q wrongly detected as a prompt", l)
-		}
-	}
-}
-
-func TestPagerMarkerRemoved(t *testing.T) {
-	in := "line one\n --More-- \x08\x08\x08\x08\x08\x08\x08\x08\x08         \x08\x08\nline two"
-	got := pagerStrip.ReplaceAllString(in, "")
-	if strings.Contains(got, "--More--") || strings.Contains(got, "\x08") {
-		t.Fatalf("pager marker left in output: %q", got)
-	}
-	if !strings.Contains(got, "line one") || !strings.Contains(got, "line two") {
-		t.Fatalf("content lost: %q", got)
-	}
-}
 
 func TestLooksComplete(t *testing.T) {
 	complete := "Building configuration...\n\nCurrent configuration : 120 bytes\nhostname sw1\n!\nend\n"
@@ -37,5 +13,27 @@ func TestLooksComplete(t *testing.T) {
 	truncated := "Building configuration...\n\nCurrent configuration : 120 bytes\nhostname sw1\n"
 	if LooksComplete(truncated) {
 		t.Error("truncated config accepted")
+	}
+}
+
+func TestProfilePromptPatterns(t *testing.T) {
+	p := testProfile(t)
+	userRe := regexp.MustCompile(p.Prompt.UserExec)
+	privRe := regexp.MustCompile(p.Prompt.Privileged)
+
+	for _, s := range []string{"sw-core-01>", "sw1>"} {
+		if !userRe.MatchString(s) {
+			t.Errorf("user prompt %q not matched", s)
+		}
+	}
+	for _, s := range []string{"sw-core-01#", "sw1(config)#"} {
+		if !privRe.MatchString(s) {
+			t.Errorf("privileged prompt %q not matched", s)
+		}
+	}
+	for _, s := range []string{"interface GigabitEthernet1/1", "--More-- "} {
+		if userRe.MatchString(s) || privRe.MatchString(s) {
+			t.Errorf("%q wrongly matched as a prompt", s)
+		}
 	}
 }

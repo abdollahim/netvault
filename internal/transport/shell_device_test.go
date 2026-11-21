@@ -12,8 +12,20 @@ import (
 	"testing"
 	"time"
 
+	"netvault/internal/profile"
 	"golang.org/x/crypto/ssh"
 )
+
+// testProfile returns the committed brand profile, so the fake-device tests
+// use the same settings a real switch does.
+func testProfile(t *testing.T) *profile.Profile {
+	t.Helper()
+	p, err := profile.LoadProfile("../../profiles/cisco-ios.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
 
 const fakeRunningConfig = "Building configuration...\n\n" +
 	"Current configuration : 120 bytes\n!\nhostname sw1\n!\n" +
@@ -202,7 +214,7 @@ func openTestShell(t *testing.T, o devOpts) *Shell {
 		t.Fatalf("dial: %v", err)
 	}
 	t.Cleanup(func() { client.Close() })
-	sh, err := OpenShell(client)
+	sh, err := OpenShell(client, testProfile(t))
 	if err != nil {
 		t.Fatalf("open shell: %v", err)
 	}

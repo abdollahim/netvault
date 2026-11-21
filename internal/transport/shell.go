@@ -9,32 +9,51 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"netvault/internal/profile"
 )
 
 var (
-	// promptLine matches a bare IOS prompt such as "host#" or "host>".
-	promptLine = regexp.MustCompile(`^[\w.\-()/]+[>#]\s*$`)
-	// pagerStrip removes the pager marker and the escape sequences used to erase it.
-	pagerStrip = regexp.MustCompile(`\s*--More--\s*|\x08+|\x1b\[[0-9;]*[A-Za-z]`)
-
 	// ErrTimeout is returned when the device does not produce the expected text in time.
 	ErrTimeout = errors.New("timed out waiting for device output")
 	// ErrEnableFailed is returned when the enable secret is rejected.
-	ErrEnableFailed = errors.New("enable failed: privilege level 15 not reached")
+	ErrEnableFailed = errors.New("enable failed: privileged prompt not reached")
 )
 
 // Shell is an interactive PTY session, the same as a person logged in at a
-// terminal. It is used when exec-channel output comes back incomplete.
+// terminal. Prompt, pager, and enable behavior come from the brand profile.
 type Shell struct {
-	sess   *ssh.Session
-	in     io.WriteCloser
-	pw     *io.PipeWriter
-	chunks chan []byte
-	buf    strings.Builder
+	sess      *ssh.Session
+	in        io.WriteCloser
+	pw        *io.PipeWriter
+	chunks    chan []byte
+	buf       strings.Builder
+	userExec  *regexp.Regexp
+	privExec  *regexp.Regexp
+	passRe    *regexp.Regexp
+	pagerRe   *regexp.Regexp
+	pagerText string
+	pagerAns  string
+	enableCmd string
 }
 
 // OpenShell starts an interactive shell with a wide PTY and no local echo.
-func OpenShell(client *ssh.Client) (*Shell, error) {
+func OpenShell(client *ssh.Client, p *profile.Profile) (*Shell, error) {
+	userRe, err := regexp.Compile(p.Prompt.UserExec)
+	if err != nil {
+		return nil, fmt.Errorf("prompt.user_exec: %w", err)
+	}
+	privRe, err := regexp.Compile(p.Prompt.Privileged)
+	if err != nil {
+		return nil, fmt.Errorf("prompt.privileged: %w", err)
+	}
+	passRe, err := regexp.Compile(p.Prompt.Password)
+	if err != nil {
+		return nil, fmt.Errorf("prompt.password: %w", err)
+	}
+	// Remove the pager marker and the escape sequences used to erase it.
+	pagerRe := regexp.MustCompile(`\s*` + regexp.QuoteMeta(p.Prompt.Pager) + `\s*|\x08+|\x1b\[[0-9;]*[A-Za-z]`)
+
 	sess, err := client.NewSession()
 	if err != nil {
 		return nil, fmt.Errorf("new session: %w", err)
@@ -61,7 +80,20 @@ func OpenShell(client *ssh.Client) (*Shell, error) {
 		pw.Close()
 		return nil, fmt.Errorf("start shell: %w", err)
 	}
-	s := &Shell{sess: sess, in: in, pw: pw, chunks: make(chan []byte, 64)}
+
+	s := &Shell{
+		sess:      sess,
+		in:        in,
+		pw:        pw,
+		chunks:    make(chan []byte, 64),
+		userExec:  userRe,
+		privExec:  privRe,
+		passRe:    passRe,
+		pagerRe:   pagerRe,
+		pagerText: p.Prompt.Pager,
+		pagerAns:  p.Prompt.PagerAnswer,
+		enableCmd: p.Enable.Command,
+	}
 	go s.pump(pr)
 	return s, nil
 }
@@ -83,17 +115,22 @@ func (s *Shell) pump(r io.Reader) {
 	}
 }
 
+// isPrompt reports whether line is a user-exec or privileged prompt.
+func (s *Shell) isPrompt(line string) bool {
+	return s.userExec.MatchString(line) || s.privExec.MatchString(line)
+}
+
 // waitFor reads device output until done reports true for the text received
-// so far. A pager marker is answered with a space and removed from the text.
+// so far. A pager marker is answered and removed from the text.
 func (s *Shell) waitFor(done func(text string) bool, timeout time.Duration) (string, error) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	for {
 		text := s.buf.String()
-		if strings.HasSuffix(strings.TrimRight(lastLine(text), " "), "--More--") {
+		if strings.HasSuffix(strings.TrimRight(lastLine(text), " "), s.pagerText) {
 			s.buf.Reset()
-			s.buf.WriteString(pagerStrip.ReplaceAllString(text, ""))
-			if _, err := io.WriteString(s.in, " "); err != nil {
+			s.buf.WriteString(s.pagerRe.ReplaceAllString(text, ""))
+			if _, err := io.WriteString(s.in, s.pagerAns); err != nil {
 				return "", err
 			}
 			continue
@@ -117,7 +154,7 @@ func (s *Shell) waitFor(done func(text string) bool, timeout time.Duration) (str
 // readPrompt reads until the last line of output is a prompt.
 func (s *Shell) readPrompt(timeout time.Duration) (string, error) {
 	return s.waitFor(func(t string) bool {
-		return strings.TrimSpace(t) != "" && promptLine.MatchString(lastLine(t))
+		return strings.TrimSpace(t) != "" && s.isPrompt(lastLine(t))
 	}, timeout)
 }
 
@@ -145,25 +182,26 @@ func (s *Shell) Run(cmd string, timeout time.Duration) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return cleanOutput(text), nil
+	return s.cleanOutput(text), nil
 }
 
-// Enable raises privilege to level 15 using the enable secret.
+// Enable raises privilege using the profile's enable command and the secret.
+// A wrong secret returns ErrEnableFailed after one attempt.
 func (s *Shell) Enable(secret string, timeout time.Duration) error {
 	s.buf.Reset()
-	if _, err := io.WriteString(s.in, "enable\n"); err != nil {
+	if _, err := io.WriteString(s.in, s.enableCmd+"\n"); err != nil {
 		return err
 	}
 	text, err := s.waitFor(func(t string) bool {
 		l := lastLine(t)
-		return strings.Contains(strings.ToLower(l), "password") || promptLine.MatchString(l)
+		return s.passRe.MatchString(l) || s.isPrompt(l)
 	}, timeout)
 	if err != nil {
 		return err
 	}
 	last := strings.TrimSpace(lastLine(text))
-	if promptLine.MatchString(last) {
-		if strings.HasSuffix(last, "#") {
+	if s.isPrompt(last) {
+		if s.privExec.MatchString(last) {
 			return nil // enabled without a secret
 		}
 		return ErrEnableFailed
@@ -176,7 +214,7 @@ func (s *Shell) Enable(secret string, timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
-	if !strings.HasSuffix(strings.TrimSpace(lastLine(text)), "#") {
+	if !s.privExec.MatchString(strings.TrimSpace(lastLine(text))) {
 		return ErrEnableFailed
 	}
 	return nil
@@ -206,10 +244,10 @@ func lastLine(s string) string {
 }
 
 // cleanOutput normalizes line endings and drops the trailing prompt line.
-func cleanOutput(text string) string {
+func (s *Shell) cleanOutput(text string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "")
-	if i := strings.LastIndex(text, "\n"); i >= 0 && promptLine.MatchString(text[i+1:]) {
+	if i := strings.LastIndex(text, "\n"); i >= 0 && s.isPrompt(text[i+1:]) {
 		return text[:i+1]
 	}
 	return text

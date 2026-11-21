@@ -32,3 +32,6 @@ tasks.yaml
 /captures/
 *.cfg
 *.session.log
+
+# local runtime data: pin files, captured output, scratch (never commit)
+/local/
