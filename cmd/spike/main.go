@@ -1,36 +1,31 @@
-// Command spike is a throwaway Phase 1 tool. It connects to one device with
-// legacy SSH settings, runs one command, and reports output size and timing.
+// Command spike is a throwaway tool. It runs one command on one device in an
+// interactive shell and reports output size, completeness, and timing.
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/abdollahim/netvault/internal/transport"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
 
 func main() {
 	addr := flag.String("addr", "REDACTED-IP:22", "device address host:port")
 	user := flag.String("user", "", "read-only account name")
-	cmd := flag.String("cmd", "show version", "command to run")
+	cmd := flag.String("cmd", "show running-config", "command to run")
 	pin := flag.String("pin", "spike-REDACTED-IP.pin", "host key pin file")
 	flag.Parse()
 
 	if *user == "" {
 		fail("-user is required")
 	}
+	pw := readSecret("password for " + *user + ": ")
 
-	fmt.Fprintf(os.Stderr, "password for %s: ", *user)
-	pw, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
-	if err != nil {
-		fail(err.Error())
-	}
-
-	start := time.Now()
 	client, err := transport.Dial(*addr,
 		transport.LegacyClientConfig(*user, string(pw), transport.PinnedHostKey(*pin)))
 	if err != nil {
@@ -38,18 +33,57 @@ func main() {
 	}
 	defer client.Close()
 
-	sess, err := client.NewSession()
+	start := time.Now()
+	out, err := runInShell(client, *cmd)
 	if err != nil {
 		fail(err.Error())
 	}
-	defer sess.Close()
+	os.Stdout.WriteString(out)
 
-	out, err := sess.Output(*cmd)
+	complete := "n/a"
+	if strings.Contains(*cmd, "running-config") {
+		complete = fmt.Sprint(transport.LooksComplete(out))
+	}
+	fmt.Fprintf(os.Stderr, "\nbytes=%d complete=%s elapsed=%s\n",
+		len(out), complete, time.Since(start).Round(time.Millisecond))
+}
+
+// runInShell logs in to the interactive shell, raises privilege if needed,
+// disables paging, and runs the command.
+func runInShell(client *ssh.Client, cmd string) (string, error) {
+	sh, err := transport.OpenShell(client)
+	if err != nil {
+		return "", err
+	}
+	defer sh.Close()
+
+	prompt, err := sh.Sync(30 * time.Second)
+	if err != nil {
+		return "", fmt.Errorf("login prompt: %w", err)
+	}
+	if strings.HasSuffix(prompt, ">") {
+		secret := readSecret("enable secret: ")
+		if err := sh.Enable(string(secret), 30*time.Second); err != nil {
+			return "", err
+		}
+	}
+	if _, err := sh.Run("terminal length 0", 30*time.Second); err != nil {
+		return "", fmt.Errorf("terminal length: %w", err)
+	}
+	if _, err := sh.Run("terminal width 0", 30*time.Second); err != nil {
+		return "", fmt.Errorf("terminal width: %w", err)
+	}
+	return sh.Run(cmd, 10*time.Minute)
+}
+
+func readSecret(prompt string) []byte {
+	fmt.Fprint(os.Stderr, prompt)
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Fprintln(os.Stderr)
 	if err != nil {
 		fail(err.Error())
 	}
-	os.Stdout.Write(out)
-	fmt.Fprintf(os.Stderr, "\nbytes=%d elapsed=%s\n", len(out), time.Since(start).Round(time.Millisecond))
+	return b
 }
 
 func fail(msg string) {
