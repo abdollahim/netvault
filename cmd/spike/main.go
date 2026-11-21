@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"internal/profile"
-	"internal/transport"
+	"netvault/internal/profile"
+	"netvault/internal/transport"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
@@ -20,15 +20,18 @@ func main() {
 	user := flag.String("user", "", "read-only account name (required)")
 	cmd := flag.String("cmd", "show running-config", "command to run")
 	pin := flag.String("pin", "", "host key pin file, kept outside the repo (required)")
+	profPath := flag.String("profile", "profiles/cisco-ios.yaml", "brand profile file")
 	flag.Parse()
 
 	if *addr == "" || *user == "" || *pin == "" {
 		fail("-addr, -user, and -pin are required")
 	}
 
-	if *user == "" {
-		fail("-user is required")
+	prof, err := profile.LoadProfile(*profPath)
+	if err != nil {
+		fail(err.Error())
 	}
+
 	pw := readSecret("password for " + *user + ": ")
 
 	client, err := transport.Dial(*addr,
@@ -39,7 +42,7 @@ func main() {
 	defer client.Close()
 
 	start := time.Now()
-	out, err := runInShell(client, *cmd)
+	out, err := runInShell(client, prof, *cmd)
 	if err != nil {
 		fail(err.Error())
 	}
@@ -53,32 +56,32 @@ func main() {
 		len(out), complete, time.Since(start).Round(time.Millisecond))
 }
 
-// runInShell logs in to the interactive shell, raises privilege if needed,
-// disables paging, and runs the command.
-func runInShell(client *ssh.Client, cmd string) (string, error) {
+// runInShell logs in to the interactive shell, raises privilege when the
+// profile's privileged prompt is required, runs the setup commands, and runs
+// the command.
+func runInShell(client *ssh.Client, prof *profile.Profile, cmd string) (string, error) {
 	sh, err := transport.OpenShell(client)
 	if err != nil {
 		return "", err
 	}
 	defer sh.Close()
 
-	prof, err := profile.LoadProfile("profiles/cisco-ios.yaml")
+	prompt, err := sh.Sync(prof.PromptTimeout())
 	if err != nil {
-		fail(err.Error())
+		return "", fmt.Errorf("login prompt: %w", err)
 	}
 	if strings.HasSuffix(prompt, ">") {
 		secret := readSecret("enable secret: ")
-		if err := sh.Enable(string(secret), 30*time.Second); err != nil {
+		if err := sh.Enable(string(secret), prof.PromptTimeout()); err != nil {
 			return "", err
 		}
 	}
-	if _, err := sh.Run("terminal length 0", 30*time.Second); err != nil {
-		return "", fmt.Errorf("terminal length: %w", err)
+	for _, setup := range prof.Setup {
+		if _, err := sh.Run(setup, prof.PromptTimeout()); err != nil {
+			return "", fmt.Errorf("setup %q: %w", setup, err)
+		}
 	}
-	if _, err := sh.Run("terminal width 0", 30*time.Second); err != nil {
-		return "", fmt.Errorf("terminal width: %w", err)
-	}
-	return sh.Run(cmd, 10*time.Minute)
+	return sh.Run(cmd, prof.CommandTimeout())
 }
 
 func readSecret(prompt string) []byte {
