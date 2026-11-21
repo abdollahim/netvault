@@ -1,55 +1,97 @@
-// Command spike is a throwaway Phase 1 tool. It connects to one device with
-// legacy SSH settings, runs one command, and reports output size and timing.
+// Command spike is a throwaway tool. It runs one command on one device in an
+// interactive shell and reports output size, completeness, and timing.
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/abdollahim/netvault/internal/transport"
+	"netvault/internal/profile"
+	"netvault/internal/transport"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
 
 func main() {
-	addr := flag.String("addr", "REDACTED-IP:22", "device address host:port")
-	user := flag.String("user", "", "read-only account name")
-	cmd := flag.String("cmd", "show version", "command to run")
-	pin := flag.String("pin", "spike-REDACTED-IP.pin", "host key pin file")
+	addr := flag.String("addr", "", "device address host:port (required)")
+	user := flag.String("user", "", "read-only account name (required)")
+	cmd := flag.String("cmd", "show running-config", "command to run")
+	pin := flag.String("pin", "", "host key pin file, kept outside the repo (required)")
+	profPath := flag.String("profile", "profiles/cisco-ios.yaml", "brand profile file")
 	flag.Parse()
 
-	if *user == "" {
-		fail("-user is required")
+	if *addr == "" || *user == "" || *pin == "" {
+		fail("-addr, -user, and -pin are required")
 	}
 
-	fmt.Fprintf(os.Stderr, "password for %s: ", *user)
-	pw, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
+	prof, err := profile.LoadProfile(*profPath)
 	if err != nil {
 		fail(err.Error())
 	}
 
-	start := time.Now()
+	pw := readSecret("password for " + *user + ": ")
+
 	client, err := transport.Dial(*addr,
-		transport.LegacyClientConfig(*user, string(pw), transport.PinnedHostKey(*pin)))
+		transport.ClientConfigFromProfile(prof, *user, string(pw), transport.PinnedHostKey(*pin)))
 	if err != nil {
 		fail(err.Error())
 	}
 	defer client.Close()
 
-	sess, err := client.NewSession()
+	start := time.Now()
+	out, err := runInShell(client, prof, *cmd)
 	if err != nil {
 		fail(err.Error())
 	}
-	defer sess.Close()
+	os.Stdout.WriteString(out)
 
-	out, err := sess.Output(*cmd)
+	complete := "n/a"
+	if strings.Contains(*cmd, "running-config") {
+		complete = fmt.Sprint(transport.LooksComplete(out))
+	}
+	fmt.Fprintf(os.Stderr, "\nbytes=%d complete=%s elapsed=%s\n",
+		len(out), complete, time.Since(start).Round(time.Millisecond))
+}
+
+// runInShell logs in to the interactive shell, raises privilege when the
+// profile's privileged prompt is required, runs the setup commands, and runs
+// the command.
+func runInShell(client *ssh.Client, prof *profile.Profile, cmd string) (string, error) {
+	sh, err := transport.OpenShell(client, prof)
+	if err != nil {
+		return "", err
+	}
+	defer sh.Close()
+
+	prompt, err := sh.Sync(prof.PromptTimeout())
+	if err != nil {
+		return "", fmt.Errorf("login prompt: %w", err)
+	}
+	if strings.HasSuffix(prompt, ">") {
+		secret := readSecret("enable secret: ")
+		if err := sh.Enable(string(secret), prof.PromptTimeout()); err != nil {
+			return "", err
+		}
+	}
+	for _, setup := range prof.Setup {
+		if _, err := sh.Run(setup, prof.PromptTimeout()); err != nil {
+			return "", fmt.Errorf("setup %q: %w", setup, err)
+		}
+	}
+	return sh.Run(cmd, prof.CommandTimeout())
+}
+
+func readSecret(prompt string) []byte {
+	fmt.Fprint(os.Stderr, prompt)
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Fprintln(os.Stderr)
 	if err != nil {
 		fail(err.Error())
 	}
-	os.Stdout.Write(out)
-	fmt.Fprintf(os.Stderr, "\nbytes=%d elapsed=%s\n", len(out), time.Since(start).Round(time.Millisecond))
+	return b
 }
 
 func fail(msg string) {

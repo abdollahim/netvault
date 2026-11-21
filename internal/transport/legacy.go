@@ -6,11 +6,13 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"netvault/internal/profile"
 )
 
 // Algorithm sets for older network devices. The Go SSH library leaves these
-// out of its defaults, so they are enabled explicitly, and only in the legacy
-// client configuration.
+// out of its defaults, so they are enabled explicitly. They are used by the
+// in-process test device and by LegacyClientConfig.
 var (
 	legacyKeyExchanges = []string{
 		"diffie-hellman-group14-sha1",
@@ -26,7 +28,7 @@ var (
 )
 
 // LegacyClientConfig returns a client configuration that offers only legacy
-// algorithms, for devices that cannot negotiate modern ones.
+// algorithms. Used by tests; the spike reads its settings from the profile.
 func LegacyClientConfig(user, password string, hostKey ssh.HostKeyCallback) *ssh.ClientConfig {
 	return &ssh.ClientConfig{
 		User:              user,
@@ -38,6 +40,23 @@ func LegacyClientConfig(user, password string, hostKey ssh.HostKeyCallback) *ssh
 			KeyExchanges: legacyKeyExchanges,
 			Ciphers:      legacyCiphers,
 			MACs:         legacyMACs,
+		},
+	}
+}
+
+// ClientConfigFromProfile builds a client configuration whose algorithm lists
+// come from the brand profile, so new brands need only a profile file.
+func ClientConfigFromProfile(p *profile.Profile, user, password string, hostKey ssh.HostKeyCallback) *ssh.ClientConfig {
+	return &ssh.ClientConfig{
+		User:              user,
+		Auth:              []ssh.AuthMethod{ssh.Password(password)},
+		HostKeyCallback:   hostKey,
+		HostKeyAlgorithms: p.Transport.HostKeyAlgorithms,
+		Timeout:           p.ConnectTimeout(),
+		Config: ssh.Config{
+			KeyExchanges: p.Transport.KeyExchanges,
+			Ciphers:      p.Transport.Ciphers,
+			MACs:         p.Transport.MACs,
 		},
 	}
 }
