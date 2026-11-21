@@ -26,3 +26,9 @@ tasks.yaml
 
 # host key pins (per device, local trust state)
 *.pin
+
+# captured device output and real test data (never commit)
+/testdata/real/
+/captures/
+*.cfg
+*.session.log
