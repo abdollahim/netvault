@@ -20,11 +20,10 @@ Pre-release. Commands run in an interactive shell driven by brand profiles.
 - Ignore rules for local runtime data (`local/`), captured output, and host key pin files.
 
 ### Fixed
-- Large running-configuration output was truncated when sent as a single exec command. Commands now run in an interactive shell, the same way a person uses a terminal.
 - Interactive commands could pick up stale output from an earlier command. Output is drained before each command, and the echoed command is removed from the result. Verification against a device is pending.
 
 ### Measured
-- Full running configuration from a production switch through the interactive shell, before the stale-output fix: complete, about 12 seconds.
+- Full running configuration from a production switch through the interactive shell: complete, `<bytes>` bytes in about `<seconds>` s.
 
 ## [0.1.0] - 2026-11-18
 
