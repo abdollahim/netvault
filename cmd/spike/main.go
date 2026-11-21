@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abdollahim/netvault/internal/transport"
+	"internal/profile"
+	"internal/transport"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
@@ -61,9 +62,9 @@ func runInShell(client *ssh.Client, cmd string) (string, error) {
 	}
 	defer sh.Close()
 
-	prompt, err := sh.Sync(30 * time.Second)
+	prof, err := profile.LoadProfile("profiles/cisco-ios.yaml")
 	if err != nil {
-		return "", fmt.Errorf("login prompt: %w", err)
+		fail(err.Error())
 	}
 	if strings.HasSuffix(prompt, ">") {
 		secret := readSecret("enable secret: ")

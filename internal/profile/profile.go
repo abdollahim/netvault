@@ -1,6 +1,6 @@
 // Package driver loads brand profiles and runs commands through a shell
 // session according to them.
-package driver
+package profile
 
 import (
 	"bytes"
